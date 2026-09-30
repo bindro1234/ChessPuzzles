@@ -38,6 +38,13 @@ const DEFAULT_SETTINGS = {
   arrowColor: '#15781b',
   boardSize: 960,
   boardY: 480,
+  boardOffsetX: 0,
+  showSafeZones: true,
+  templateLevels: 4,        // how many levels the Premiere template has
+  templateBakeBoard: false, // true: level images contain the board squares too
+  labelFont: 'Arial Black',
+  labelSize: 64,
+  labelColor: '#ffffff',
 };
 const settings = Object.assign({}, DEFAULT_SETTINGS, JSON.parse(localStorage.getItem('settings') || '{}'));
 
@@ -96,6 +103,8 @@ function refresh() {
 function showPuzzle() {
   current = null;
   generateButton.disabled = true;
+  el('saveTemplate').disabled = true;
+  renderLabel('', settings, el('labelPreview'));
   levelsBox.innerHTML = '';
   message.textContent = '';
   message.className = '';
@@ -119,6 +128,8 @@ function showPuzzle() {
   }
   current = { puzzle: puzzle, result: result };
   generateButton.disabled = false;
+  el('saveTemplate').disabled = false;
+  renderLabel(labelText(result), settings, el('labelPreview'));
 
   // Summary line + warnings
   const side = result.solver === 'w' ? 'White' : 'Black';
@@ -135,6 +146,13 @@ function showPuzzle() {
     const div = document.createElement('div');
     div.className = 'warning';
     div.textContent = 'You already ' + puzzleLog[puzzle.id].status + ' this puzzle on ' + puzzleLog[puzzle.id].date + '.';
+    summary.appendChild(div);
+  }
+
+  if (result.levels.length !== settings.templateLevels) {
+    const div = document.createElement('div');
+    div.className = 'note';
+    div.textContent = 'Template mode: this puzzle has ' + result.levels.length + ' levels, your template has ' + settings.templateLevels + '.';
     summary.appendChild(div);
   }
 
@@ -168,7 +186,7 @@ function addPreview(board, position, flipped, title, moves) {
 function showLayoutPreview(boardCanvas, positionCanvas) {
   const old = layoutPreview.querySelector('canvas');
   if (old) old.remove();
-  layoutPreview.appendChild(renderLayoutPreview(boardCanvas, positionCanvas));
+  layoutPreview.appendChild(renderLayoutPreview(boardCanvas, positionCanvas, backgroundImage, settings.showSafeZones));
 }
 
 // ---------- Engine check (is the mate really forced?) ----------
@@ -421,6 +439,15 @@ function buildReadme(puzzle, result, name) {
   return lines.join('\r\n') + '\r\n';
 }
 
+// Reasons to think twice before exporting this puzzle (used by both export buttons).
+function exportDoubts(id) {
+  const doubts = [];
+  if (engineCheck.state !== 'done') doubts.push('The engine has NOT confirmed that this is a forced mate.');
+  else if (engineCheck.report.problems.length) doubts.push('The engine check found problems:\n' + engineCheck.report.problems.join('\n'));
+  if (puzzleLog[id] && puzzleLog[id].status === 'used') doubts.push('You already used this puzzle on ' + puzzleLog[id].date + '.');
+  return doubts;
+}
+
 async function generate() {
   if (!window.showDirectoryPicker) {
     throw new Error('This browser cannot write into folders. Use a current Chrome or Edge.');
@@ -437,10 +464,7 @@ async function generate() {
   const name = todayString() + '_' + id; // used for the folder and as a prefix for every file
 
   // Safety questions before anything is written.
-  const doubts = [];
-  if (engineCheck.state !== 'done') doubts.push('The engine has NOT confirmed that this is a forced mate.');
-  else if (engineCheck.report.problems.length) doubts.push('The engine check found problems:\n' + engineCheck.report.problems.join('\n'));
-  if (puzzleLog[id] && puzzleLog[id].status === 'used') doubts.push('You already used this puzzle on ' + puzzleLog[id].date + '.');
+  const doubts = exportDoubts(id);
   for await (const [entryName, entry] of baseHandle.entries()) {
     if (id !== 'puzzle' && entry.kind === 'directory' && entryName.endsWith('_' + id) && entryName !== name) {
       doubts.push('This folder already contains "' + entryName + '" for the same puzzle.');
@@ -485,10 +509,142 @@ generateButton.addEventListener('click', () => {
   });
 });
 
+// ---------- Template mode ----------
+// Writes stills with fixed names into one remembered folder, so a Premiere template picks them up.
+
+let templateFolder = null; // the folder handle, remembered between sessions (see storage.js)
+
+function showTemplateFolder() {
+  el('templateFolderName').textContent = templateFolder ? templateFolder.name : 'none picked yet';
+}
+
+async function chooseTemplateFolder() {
+  try {
+    templateFolder = await window.showDirectoryPicker({ mode: 'readwrite' });
+  } catch (error) {
+    return false; // dialog closed
+  }
+  await keepSet('templateFolder', templateFolder);
+  showTemplateFolder();
+  return true;
+}
+
+// "WHITE TO MOVE · MATE IN 4"
+function labelText(result) {
+  return (result.solver === 'w' ? 'WHITE' : 'BLACK') + ' TO MOVE · MATE IN ' + result.levels.length;
+}
+
+async function fileExists(folderHandle, name) {
+  try {
+    await folderHandle.getFileHandle(name);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+async function saveTemplate() {
+  if (!window.showDirectoryPicker) {
+    throw new Error('This browser cannot write into folders. Use a current Chrome or Edge.');
+  }
+  if (!templateFolder && !(await chooseTemplateFolder())) {
+    message.textContent = 'No folder picked.';
+    return;
+  }
+  // After a browser restart Chrome asks once more whether the page may write into the folder.
+  if ((await templateFolder.requestPermission({ mode: 'readwrite' })) !== 'granted') {
+    message.textContent = 'Chrome did not get permission to write into "' + templateFolder.name + '".';
+    return;
+  }
+
+  const result = current.result;
+  const levelCount = result.levels.length;
+  const id = puzzleId.value.trim().replace(/[^\w-]/g, '') || 'puzzle';
+
+  const doubts = exportDoubts(id);
+  if (levelCount !== settings.templateLevels) {
+    doubts.push('This puzzle has ' + levelCount + ' levels, but your template has ' + settings.templateLevels + '.');
+  }
+  if (doubts.length && !confirm(doubts.join('\n\n') + '\n\nSave anyway?')) {
+    message.textContent = 'Cancelled.';
+    return;
+  }
+
+  const flipped = isFlipped(result);
+  const board = renderBoard(flipped, settings);
+  const still = position => {
+    const pieces = renderPosition(position, flipped, settings, pieceImages);
+    if (!settings.templateBakeBoard) return pieces;
+    const both = newCanvas(FRAME_W, FRAME_H);
+    both.getContext('2d').drawImage(board, 0, 0);
+    both.getContext('2d').drawImage(pieces, 0, 0);
+    return both;
+  };
+
+  const files = { 'board.png': board, 'mate.png': still(result.finalPosition), 'label.png': renderLabel(labelText(result), settings) };
+  for (const level of result.levels) files['level' + level.number + '.png'] = still(level.position);
+  for (const name in files) {
+    await writeFile(templateFolder, name, await canvasToPngBlob(files[name]));
+  }
+  await writeFile(templateFolder, 'info.txt', buildReadme(current.puzzle, result, id));
+
+  // Level images of an earlier, longer puzzle are left alone, but pointed out.
+  const leftovers = [];
+  for (let n = levelCount + 1; n <= 9; n++) {
+    if (await fileExists(templateFolder, 'level' + n + '.png')) leftovers.push('level' + n + '.png');
+  }
+
+  if (current.puzzle.id) markPuzzle(current.puzzle.id, 'used', todayString());
+  updatePickerInfo();
+  message.textContent = 'Saved to "' + templateFolder.name + '": ' + Object.keys(files).sort().join(', ') + ' and info.txt.' +
+    (leftovers.length ? '\nWARNING: ' + leftovers.join(', ') + ' in that folder belong' + (leftovers.length === 1 ? 's' : '') +
+      ' to an earlier puzzle and ' + (leftovers.length === 1 ? 'was' : 'were') + ' not changed.' : '');
+  if (leftovers.length) message.className = 'error';
+}
+
+el('saveTemplate').addEventListener('click', () => {
+  message.className = '';
+  saveTemplate().catch(error => {
+    message.className = 'error';
+    message.textContent = 'Something went wrong: ' + error.message;
+  });
+});
+el('changeTemplateFolder').addEventListener('click', async event => {
+  event.preventDefault();
+  await chooseTemplateFolder();
+});
+
+// ---------- Preview background (never exported) ----------
+
+let backgroundImage = null;
+
+async function setBackground(file) {
+  backgroundImage = file ? await createImageBitmap(file) : null;
+  await keepSet('background', file || null);
+  refresh();
+}
+
+el('backgroundFile').addEventListener('change', () => setBackground(el('backgroundFile').files[0]));
+el('clearBackground').addEventListener('click', event => {
+  event.preventDefault();
+  el('backgroundFile').value = '';
+  setBackground(null);
+});
+
 // ---------- Start ----------
 
 showSettings();
-loadPieceImages().then(images => {
+loadPieceImages().then(async images => {
   pieceImages = images;
   refresh();
+  // Things remembered from last time: the template folder and the preview background.
+  try {
+    templateFolder = (await keepGet('templateFolder')) || null;
+    showTemplateFolder();
+    const file = await keepGet('background');
+    if (file) {
+      backgroundImage = await createImageBitmap(file);
+      refresh();
+    }
+  } catch (error) { /* nothing remembered, or the browser blocks storage: start without */ }
 });

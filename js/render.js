@@ -23,11 +23,11 @@ async function loadPieceImages() {
   return images;
 }
 
-// Where the board sits on the frame: centred left-right, boardY pixels from the top.
+// Where the board sits on the frame: centred left-right (plus boardOffsetX), boardY pixels from the top.
 // The size is rounded down to a multiple of 8 so every square is a whole number of pixels.
 function boardRect(look) {
   const size = Math.floor(look.boardSize / 8) * 8;
-  return { x: Math.round((FRAME_W - size) / 2), y: look.boardY, size: size };
+  return { x: Math.round((FRAME_W - size) / 2) + look.boardOffsetX, y: look.boardY, size: size };
 }
 
 // "e4" -> pixel position of that square's top-left corner, plus the square size s.
@@ -158,13 +158,20 @@ const TIKTOK_ZONES = [
   { label: 'buttons', x: 940, y: 800, w: 140, h: 640 },
 ];
 
-function renderLayoutPreview(boardCanvas, positionCanvas) {
+// backgroundImage (optional) is only for this preview; it is scaled to cover the frame.
+function renderLayoutPreview(boardCanvas, positionCanvas, backgroundImage, showZones) {
   const canvas = newCanvas(FRAME_W, FRAME_H);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#111';
   ctx.fillRect(0, 0, FRAME_W, FRAME_H);
+  if (backgroundImage) {
+    const scale = Math.max(FRAME_W / backgroundImage.width, FRAME_H / backgroundImage.height);
+    const w = backgroundImage.width * scale, h = backgroundImage.height * scale;
+    ctx.drawImage(backgroundImage, (FRAME_W - w) / 2, (FRAME_H - h) / 2, w, h);
+  }
   ctx.drawImage(boardCanvas, 0, 0);
   if (positionCanvas) ctx.drawImage(positionCanvas, 0, 0);
+  if (!showZones) return canvas;
 
   ctx.font = '44px system-ui, sans-serif';
   ctx.textAlign = 'center';
@@ -179,6 +186,20 @@ function renderLayoutPreview(boardCanvas, positionCanvas) {
     ctx.fillText(zone.label, 0, 0);
     ctx.restore();
   }
+  return canvas;
+}
+
+// The turn label, e.g. "WHITE TO MOVE · MATE IN 4": a 1080x200 transparent strip with the text centred.
+// If a canvas is passed in, the label is drawn onto it (used for the preview on the page).
+function renderLabel(text, look, canvas) {
+  canvas = canvas || newCanvas(FRAME_W, 200);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = look.labelSize + 'px "' + look.labelFont + '", Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = look.labelColor;
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2, canvas.width - 40); // squeezed if wider than the frame
   return canvas;
 }
 

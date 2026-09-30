@@ -19,6 +19,7 @@ Premiere imports as an editable sequence with level markers.
 - `js/xml.js` – writes the Premiere sequence (Final Cut Pro 7 XML)
 - `js/verify.js` – engine check: is the mate really forced?
 - `js/picker.js` – "Next puzzle" shortlist and the used/skipped list
+- `js/storage.js` – remembers the template folder and the preview background
 - `js/app.js` – settings, preview and export
 - `tools/make-shortlist.js` – one-time script that builds `data/shortlist.js` from the Lichess puzzle database
 - `start-local.bat` – runs the tool on this PC (the engine check does not work when `index.html` is opened by double-click)
