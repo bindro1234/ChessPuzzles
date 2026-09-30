@@ -17,10 +17,16 @@ Premiere imports as an editable sequence with level markers.
 - `js/puzzle.js` – reads the pasted puzzle and splits it into levels
 - `js/render.js` – draws the board and pieces
 - `js/xml.js` – writes the Premiere sequence (Final Cut Pro 7 XML)
+- `js/verify.js` – engine check: is the mate really forced?
+- `js/picker.js` – "Next puzzle" shortlist and the used/skipped list
 - `js/app.js` – settings, preview and export
+- `tools/make-shortlist.js` – one-time script that builds `data/shortlist.js` from the Lichess puzzle database
+- `start-local.bat` – runs the tool on this PC (the engine check does not work when `index.html` is opened by double-click)
 - `vendor/` – third-party files (see below)
 
 ## Credits
 
 - [chess.js](https://github.com/jhlywa/chess.js) by Jeff Hlywa, BSD 2-Clause licence (`vendor/chess.js-LICENSE.txt`)
+- [Stockfish.js](https://github.com/nmrugg/stockfish.js) 10, GPLv3 (`vendor/stockfish/Copying.txt`)
+- Puzzles from the [Lichess puzzle database](https://database.lichess.org/#puzzles), CC0
 - cburnett chess pieces by Colin M.L. Burnett, as distributed by [Lichess](https://github.com/lichess-org/lila) under GPLv2+
