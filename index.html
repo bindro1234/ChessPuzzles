@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chessifity Level Puzzle</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 32px auto; padding: 0 16px; background: #1e1f24; color: #e8e8ea; }
+    h1 { font-size: 22px; }
+    h2 { font-size: 17px; margin: 28px 0 8px; }
+    h3 { font-size: 14px; margin: 16px 0 0; color: #a0a3ad; text-transform: uppercase; letter-spacing: 0.05em; }
+    label { display: inline-block; margin: 10px 20px 0 0; }
+    textarea, input[type=text], input[type=number], select { padding: 6px 8px; font-size: 15px; box-sizing: border-box; font-family: inherit; }
+    textarea { width: 100%; height: 130px; font-family: Consolas, monospace; font-size: 13px; }
+    input[type=number] { width: 80px; }
+    input[type=color] { vertical-align: middle; }
+    button { margin: 16px 12px 0 0; padding: 10px 18px; font-size: 16px; cursor: pointer; }
+    .hint { color: #a0a3ad; font-size: 14px; }
+    #message { margin-top: 12px; white-space: pre-wrap; line-height: 1.5; }
+    #message.error, .warning { color: #ff8a80; }
+    #optionsRow { display: flex; gap: 32px; align-items: flex-start; }
+    #optionsRow > div:first-child { flex: 1; }
+    #layoutPreview canvas { width: 216px; height: 384px; border: 1px solid #555; display: block; }
+    #levels { display: flex; flex-wrap: wrap; gap: 16px; }
+    .level canvas { display: block; width: 240px; height: 240px; }
+    .level .title { font-weight: 600; margin-bottom: 6px; }
+    .level .moves { margin-top: 6px; color: #a0a3ad; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>Chessifity Level Puzzle</h1>
+
+  <h2>1. Puzzle</h2>
+  <textarea id="puzzleText" placeholder="Paste a PGN with [FEN] and [SetUp] headers&#10;or a Lichess puzzle database line: PuzzleId,FEN,Moves,Rating,…&#10;or a FEN, then the UCI moves (e.g. e2e4 e7e5)"></textarea>
+  <div>
+    <label><input type="checkbox" id="hasSetupMove"> First move is the opponent's setup move (Lichess database format)</label>
+    <label>Puzzle ID <input type="text" id="puzzleId" size="10"></label>
+  </div>
+
+  <h2>2. Options</h2>
+  <div id="optionsRow">
+    <div>
+      <!-- Every input below is a setting: its id is the setting's name in app.js, and it is remembered between sessions. -->
+      <h3>Timing</h3>
+      <label>Seconds per level <input type="number" id="secondsPerLevel" min="0.5" step="0.5"></label>
+      <label>Hold on final mate (s) <input type="number" id="finalHold" min="0.5" step="0.5"></label>
+      <label>Elo labels (last = final level) <input type="text" id="eloList" size="28"></label>
+      <br>
+      <label><input type="checkbox" id="animateMoves"> Animate the moves</label>
+      <label>Frames before the bar moves <input type="number" id="framesBefore" min="1" max="30" step="1"></label>
+      <label>Frames after the bar ends <input type="number" id="framesAfter" min="1" max="30" step="1"></label>
+
+      <h3>Board</h3>
+      <label>Light squares <input type="color" id="lightColor"></label>
+      <label>Dark squares <input type="color" id="darkColor"></label>
+      <label><input type="checkbox" id="coordinates"> Coordinates</label>
+      <label>Orientation
+        <select id="orientation">
+          <option value="auto">Side to move at the bottom</option>
+          <option value="white">White at the bottom</option>
+          <option value="black">Black at the bottom</option>
+        </select>
+      </label>
+
+      <h3>Highlights</h3>
+      <label>Last move <input type="color" id="lastMoveColor"></label>
+      <label>Strength % <input type="number" id="lastMoveOpacity" min="0" max="100" step="5"></label>
+      <label><input type="checkbox" id="checkHighlight"> Red glow on a king in check</label>
+      <br>
+      <label><input type="checkbox" id="arrow"> Arrow for the last move</label>
+      <label>Arrow colour <input type="color" id="arrowColor"></label>
+
+      <h3>Position on the 1080×1920 frame</h3>
+      <label>Board size (px) <input type="number" id="boardSize" min="400" max="1080" step="8"></label>
+      <label>Top edge (px from top) <input type="number" id="boardY" min="0" max="1500" step="10"></label>
+      <br>
+      <button id="resetSettings">Reset options to defaults</button>
+    </div>
+    <div id="layoutPreview">
+      <div class="hint" style="margin-bottom:6px">Frame preview. Red = roughly where<br>TikTok puts its own interface.</div>
+    </div>
+  </div>
+
+  <h2>3. Preview</h2>
+  <div id="summary" class="hint">Nothing pasted yet.</div>
+  <div id="levels"></div>
+
+  <h2>4. Export</h2>
+  <p class="hint">Pick your Chessifity folder. A subfolder named date + puzzle ID is created in it, holding the PNGs and the XML for Premiere.</p>
+  <button id="generate" disabled>Pick folder and generate</button>
+  <div id="message"></div>
+
+  <script src="vendor/chess.js"></script>
+  <script src="vendor/pieces-cburnett.js"></script>
+  <script src="js/puzzle.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/xml.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
