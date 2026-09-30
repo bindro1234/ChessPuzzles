@@ -41,7 +41,8 @@ const DEFAULT_SETTINGS = {
   boardOffsetX: 0,
   showSafeZones: true,
   templateLevels: 4,        // how many levels the Premiere template has
-  templateBakeBoard: false, // true: level images contain the board squares too
+  templateBakeBoard: false, // true: level images and sequence frames contain the board squares too
+  templateOutput: 'both',   // 'stills' (level1.png …), 'sequence' (puzzle_0000.png …) or 'both'
   labelFont: 'Arial Black',
   labelSize: 64,
   labelColor: '#ffffff',
@@ -561,9 +562,18 @@ async function saveTemplate() {
   const levelCount = result.levels.length;
   const id = puzzleId.value.trim().replace(/[^\w-]/g, '') || 'puzzle';
 
+  const writeStills = settings.templateOutput !== 'sequence';
+  const writeFrames = settings.templateOutput !== 'stills';
+  // The same timeline as the XML export, so timing and slides are identical.
+  const timeline = writeFrames ? buildTimeline(result, id) : null;
+
   const doubts = exportDoubts(id);
   if (levelCount !== settings.templateLevels) {
     doubts.push('This puzzle has ' + levelCount + ' levels, but your template has ' + settings.templateLevels + '.');
+  }
+  if (timeline && timeline.totalFrames !== templateFrameCount()) {
+    doubts.push('The PNG sequence would have ' + timeline.totalFrames + ' frames instead of the ' + templateFrameCount() +
+      ' your template expects, so Premiere\'s image sequence clip will not match.');
   }
   if (doubts.length && !confirm(doubts.join('\n\n') + '\n\nSave anyway?')) {
     message.textContent = 'Cancelled.';
@@ -581,8 +591,12 @@ async function saveTemplate() {
     return both;
   };
 
-  const files = { 'board.png': board, 'mate.png': still(result.finalPosition), 'label.png': renderLabel(labelText(result), settings) };
-  for (const level of result.levels) files['level' + level.number + '.png'] = still(level.position);
+  // board.png, label.png and info.txt are always written; the level stills only when asked for.
+  const files = { 'board.png': board, 'label.png': renderLabel(labelText(result), settings) };
+  if (writeStills) {
+    files['mate.png'] = still(result.finalPosition);
+    for (const level of result.levels) files['level' + level.number + '.png'] = still(level.position);
+  }
   for (const name in files) {
     await writeFile(templateFolder, name, await canvasToPngBlob(files[name]));
   }
@@ -590,16 +604,90 @@ async function saveTemplate() {
 
   // Level images of an earlier, longer puzzle are left alone, but pointed out.
   const leftovers = [];
-  for (let n = levelCount + 1; n <= 9; n++) {
-    if (await fileExists(templateFolder, 'level' + n + '.png')) leftovers.push('level' + n + '.png');
+  if (writeStills) {
+    for (let n = levelCount + 1; n <= 9; n++) {
+      if (await fileExists(templateFolder, 'level' + n + '.png')) leftovers.push('level' + n + '.png');
+    }
+  }
+
+  let framesText = '';
+  if (timeline) {
+    const removed = await writeSequence(timeline, settings.templateBakeBoard ? board : null);
+    framesText = '\nPNG sequence: ' + frameName(0) + ' … ' + frameName(timeline.totalFrames - 1) +
+      ' (' + timeline.totalFrames + ' frames)' + (removed ? ', ' + removed + ' leftover frames deleted' : '') + '.';
   }
 
   if (current.puzzle.id) markPuzzle(current.puzzle.id, 'used', todayString());
   updatePickerInfo();
   message.textContent = 'Saved to "' + templateFolder.name + '": ' + Object.keys(files).sort().join(', ') + ' and info.txt.' +
+    framesText +
     (leftovers.length ? '\nWARNING: ' + leftovers.join(', ') + ' in that folder belong' + (leftovers.length === 1 ? 's' : '') +
       ' to an earlier puzzle and ' + (leftovers.length === 1 ? 'was' : 'were') + ' not changed.' : '');
   if (leftovers.length) message.className = 'error';
+}
+
+// ---------- PNG sequence (template mode) ----------
+
+function frameName(frame) {
+  return 'puzzle_' + String(frame).padStart(4, '0') + '.png';
+}
+
+// How many frames a puzzle with the template's level count gives with the current timing.
+// Must match what buildTimeline() produces.
+function templateFrameCount() {
+  return settings.templateLevels * Math.round(settings.secondsPerLevel * FPS) + Math.round(settings.finalHold * FPS);
+}
+
+// Writes every frame of the timeline as puzzle_0000.png, puzzle_0001.png, …
+// Each frame is put together exactly like Premiere stacks the XML tracks:
+// board (if baked in), then the pieces still on V2, then the sliding piece on V3 moved by its keyframe.
+// Frames that look the same (all the frames of a standing position) are packed into PNG only once.
+// Afterwards, puzzle_XXXX.png files numbered beyond the end are deleted. Returns how many were deleted.
+async function writeSequence(timeline, board) {
+  const [, piecesTrack, sliderTrack] = timeline.tracks;
+  const clipAt = (track, frame) => track.find(clip => frame >= clip.start && frame < clip.end);
+  const total = timeline.totalFrames;
+  const progress = el('saveProgress');
+  progress.max = total;
+  progress.hidden = false;
+
+  let lastKey = null;
+  let lastBlob = null;
+  try {
+    for (let frame = 0; frame < total; frame++) {
+      const pieces = clipAt(piecesTrack, frame);
+      const slider = clipAt(sliderTrack, frame);
+      const key = pieces.fileName + (slider ? '|' + slider.fileName + '@' + (frame - slider.start) : '');
+      if (key !== lastKey) {
+        const canvas = newCanvas(FRAME_W, FRAME_H);
+        const ctx = canvas.getContext('2d');
+        if (board) ctx.drawImage(board, 0, 0);
+        ctx.drawImage(timeline.stills[pieces.fileName], 0, 0);
+        if (slider) {
+          const move = slider.keyframes[frame - slider.start];
+          ctx.drawImage(timeline.stills[slider.fileName], move.dx, move.dy);
+        }
+        lastBlob = await canvasToPngBlob(canvas);
+        lastKey = key;
+      }
+      await writeFile(templateFolder, frameName(frame), lastBlob);
+      if (frame % 10 === 0 || frame === total - 1) {
+        progress.value = frame + 1;
+        message.textContent = 'Writing frame ' + (frame + 1) + ' of ' + total + '…';
+      }
+    }
+  } finally {
+    progress.hidden = true;
+  }
+
+  // Leftover frames from a longer earlier puzzle would otherwise stay part of Premiere's sequence.
+  const leftovers = [];
+  for await (const [name, entry] of templateFolder.entries()) {
+    const match = name.match(/^puzzle_(\d+)\.png$/);
+    if (entry.kind === 'file' && match && Number(match[1]) >= total) leftovers.push(name);
+  }
+  for (const name of leftovers) await templateFolder.removeEntry(name);
+  return leftovers.length;
 }
 
 el('saveTemplate').addEventListener('click', () => {

@@ -95,8 +95,17 @@
 
       <h3>Template mode</h3>
       <label>Levels in my Premiere template <input type="number" id="templateLevels" min="1" max="9" step="1"></label>
-      <label><input type="checkbox" id="templateBakeBoard"> Put the board into the level images (otherwise pieces only, board.png separate)</label>
+      <label><input type="checkbox" id="templateBakeBoard"> Put the board into the level images and frames (otherwise pieces only, board.png separate)</label>
       <br>
+      <label>Write
+        <select id="templateOutput">
+          <option value="both">level stills + animated PNG sequence</option>
+          <option value="stills">level stills only</option>
+          <option value="sequence">animated PNG sequence only</option>
+        </select>
+      </label>
+      <div class="hint">PNG sequence: puzzle_0000.png, puzzle_0001.png, … at 30 fps, same timing and slides as the XML export.
+        In Premiere import puzzle_0000.png with "Image Sequence" ticked, then set it to 30 fps (right-click > Modify > Interpret Footage).</div>
       <label>Label font <input type="text" id="labelFont" size="16"></label>
       <label>Size (px) <input type="number" id="labelSize" min="20" max="160" step="2"></label>
       <label>Colour <input type="color" id="labelColor"></label>
@@ -121,22 +130,25 @@
   <h2>4. Export</h2>
   <p class="hint">Pick your Chessifity folder. A subfolder named date + puzzle ID is created in it, holding the PNGs and the XML for Premiere.</p>
   <button id="generate" disabled>Pick folder and generate</button>
-  <p class="hint">Template mode: writes level1.png … levelN.png, mate.png, board.png, label.png and info.txt into one fixed folder,
+  <p class="hint">Template mode: writes level1.png … levelN.png, mate.png and/or the PNG sequence puzzle_0000.png …, plus board.png, label.png and info.txt into one fixed folder,
     always with the same names, so a Premiere template that uses those files updates itself.
     Folder: <b id="templateFolderName">none picked yet</b> · <a href="#" id="changeTemplateFolder">choose folder</a></p>
   <button id="saveTemplate" disabled>Save to template folder</button>
+  <progress id="saveProgress" hidden style="width:300px;vertical-align:middle"></progress>
   <canvas id="labelPreview" width="1080" height="200" style="display:block;width:540px;height:100px;margin-top:12px;background:#333"></canvas>
   <div id="message"></div>
 
-  <script src="vendor/chess.js"></script>
-  <script src="vendor/pieces-cburnett.js"></script>
-  <script src="data/shortlist.js"></script>
-  <script src="js/storage.js"></script>
-  <script src="js/puzzle.js"></script>
-  <script src="js/picker.js"></script>
-  <script src="js/verify.js"></script>
-  <script src="js/render.js"></script>
-  <script src="js/xml.js"></script>
-  <script src="js/app.js"></script>
+  <!-- The ?v= number makes the browser fetch fresh copies instead of using old remembered ones.
+       Raise it (same number everywhere) whenever a JS file changes. -->
+  <script src="vendor/chess.js?v=6"></script>
+  <script src="vendor/pieces-cburnett.js?v=6"></script>
+  <script src="data/shortlist.js?v=6"></script>
+  <script src="js/storage.js?v=6"></script>
+  <script src="js/puzzle.js?v=6"></script>
+  <script src="js/picker.js?v=6"></script>
+  <script src="js/verify.js?v=6"></script>
+  <script src="js/render.js?v=6"></script>
+  <script src="js/xml.js?v=6"></script>
+  <script src="js/app.js?v=6"></script>
 </body>
 </html>
