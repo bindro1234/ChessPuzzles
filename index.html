@@ -128,15 +128,17 @@
   <canvas id="labelPreview" width="1080" height="200" style="display:block;width:540px;height:100px;margin-top:12px;background:#333"></canvas>
   <div id="message"></div>
 
-  <script src="vendor/chess.js"></script>
-  <script src="vendor/pieces-cburnett.js"></script>
-  <script src="data/shortlist.js"></script>
-  <script src="js/storage.js"></script>
-  <script src="js/puzzle.js"></script>
-  <script src="js/picker.js"></script>
-  <script src="js/verify.js"></script>
-  <script src="js/render.js"></script>
-  <script src="js/xml.js"></script>
-  <script src="js/app.js"></script>
+  <!-- The ?v= number makes the browser fetch fresh copies instead of using old remembered ones.
+       Raise it (same number everywhere) whenever a JS file changes. -->
+  <script src="vendor/chess.js?v=5"></script>
+  <script src="vendor/pieces-cburnett.js?v=5"></script>
+  <script src="data/shortlist.js?v=5"></script>
+  <script src="js/storage.js?v=5"></script>
+  <script src="js/puzzle.js?v=5"></script>
+  <script src="js/picker.js?v=5"></script>
+  <script src="js/verify.js?v=5"></script>
+  <script src="js/render.js?v=5"></script>
+  <script src="js/xml.js?v=5"></script>
+  <script src="js/app.js?v=5"></script>
 </body>
 </html>
