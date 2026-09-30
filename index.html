@@ -17,6 +17,10 @@
     .hint { color: #a0a3ad; font-size: 14px; }
     #message { margin-top: 12px; white-space: pre-wrap; line-height: 1.5; }
     #message.error, .warning { color: #ff8a80; }
+    .ok { color: #7bd88f; }
+    .note { color: #ffd479; }
+    #engineStatus { margin: 6px 0 12px; line-height: 1.5; }
+    a { color: #8ab4f8; }
     #optionsRow { display: flex; gap: 32px; align-items: flex-start; }
     #optionsRow > div:first-child { flex: 1; }
     #layoutPreview canvas { width: 216px; height: 384px; border: 1px solid #555; display: block; }
@@ -30,6 +34,21 @@
   <h1>Chessifity Level Puzzle</h1>
 
   <h2>1. Puzzle</h2>
+  <div id="picker">
+    <label><input type="checkbox" id="pickMate3"> Mate in 3</label>
+    <label><input type="checkbox" id="pickMate4"> Mate in 4</label>
+    <label><input type="checkbox" id="pickMate5"> Mate in 5</label>
+    <label>Rating <input type="number" id="pickRatingMin" step="50"> to <input type="number" id="pickRatingMax" step="50"></label>
+    <br>
+    <button id="nextPuzzle">Next puzzle</button>
+    <button id="skipPuzzle">Skip this one</button>
+    <span id="pickerInfo" class="hint"></span>
+    <p class="hint">Generating marks a puzzle as used. The used-list lives in this browser, for this address only:
+      <a href="#" id="saveLog">save it to a file</a> now and then, or
+      <a href="#" id="loadLog">load it from a file</a>.
+      <input type="file" id="logFile" accept=".json" hidden></p>
+  </div>
+  <p class="hint">Or paste a puzzle yourself:</p>
   <textarea id="puzzleText" placeholder="Paste a PGN with [FEN] and [SetUp] headers&#10;or a Lichess puzzle database line: PuzzleId,FEN,Moves,Rating,…&#10;or a FEN, then the UCI moves (e.g. e2e4 e7e5)"></textarea>
   <div>
     <label><input type="checkbox" id="hasSetupMove"> First move is the opponent's setup move (Lichess database format)</label>
@@ -82,6 +101,7 @@
 
   <h2>3. Preview</h2>
   <div id="summary" class="hint">Nothing pasted yet.</div>
+  <div id="engineStatus"></div>
   <div id="levels"></div>
 
   <h2>4. Export</h2>
@@ -91,7 +111,10 @@
 
   <script src="vendor/chess.js"></script>
   <script src="vendor/pieces-cburnett.js"></script>
+  <script src="data/shortlist.js"></script>
   <script src="js/puzzle.js"></script>
+  <script src="js/picker.js"></script>
+  <script src="js/verify.js"></script>
   <script src="js/render.js"></script>
   <script src="js/xml.js"></script>
   <script src="js/app.js"></script>

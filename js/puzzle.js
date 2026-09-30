@@ -60,6 +60,11 @@ function readPuzzleText(text) {
   };
 }
 
+// { from: 'e7', to: 'e8', promotion: 'q' } -> 'e7e8q'
+function toUci(move) {
+  return move.from + move.to + (move.promotion || '');
+}
+
 // What the board looks like right now, in the shape render.js wants.
 function snapshot(chess, lastMove) {
   const pieces = {};
@@ -130,6 +135,8 @@ function buildLevels(puzzle, hasSetupMove, eloList) {
       elo: eloForLevel(eloList, k, levelCount),
       position: positions[2 * k],
       solverMove: sans[2 * k],
+      solverUci: toUci(moves[2 * k]), // e.g. "g5f7", for the engine check
+      replyUci: moves[2 * k + 1] ? toUci(moves[2 * k + 1]) : '',
       reply: sans[2 * k + 1] || '',
     });
   }

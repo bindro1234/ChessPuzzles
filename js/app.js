@@ -22,6 +22,11 @@ const DEFAULT_SETTINGS = {
   animateMoves: true,
   framesBefore: 8, // at the start of a level, before the bar template starts moving: the opponent's reply slides
   framesAfter: 6,  // at the end of a level, after the bar has finished: the solution move slides
+  pickMate3: true, // filters for the "Next puzzle" button
+  pickMate4: true,
+  pickMate5: true,
+  pickRatingMin: 1500,
+  pickRatingMax: 2300,
   lightColor: '#f0d9b5',
   darkColor: '#b58863',
   coordinates: true,
@@ -84,11 +89,17 @@ let pieceImages = null; // loaded once at startup
 let current = null;     // { puzzle, result } of the puzzle on screen, or null if there is none
 
 function refresh() {
+  showPuzzle();
+  updatePickerInfo(); // after showPuzzle, because the Skip button depends on the puzzle on screen
+}
+
+function showPuzzle() {
   current = null;
   generateButton.disabled = true;
   levelsBox.innerHTML = '';
   message.textContent = '';
   message.className = '';
+  el('engineStatus').innerHTML = '';
 
   if (!puzzleText.value.trim()) {
     summary.textContent = 'Nothing pasted yet.';
@@ -120,6 +131,17 @@ function refresh() {
     div.textContent = 'Warning: ' + warning;
     summary.appendChild(div);
   }
+  if (puzzleLog[puzzle.id]) {
+    const div = document.createElement('div');
+    div.className = 'warning';
+    div.textContent = 'You already ' + puzzleLog[puzzle.id].status + ' this puzzle on ' + puzzleLog[puzzle.id].date + '.';
+    summary.appendChild(div);
+  }
+
+  // Engine check: only started again when the puzzle itself changed, not when a colour was changed.
+  const key = puzzle.startFen + '|' + puzzle.moves.map(m => m.from + m.to).join(' ') + '|' + hasSetupMove.checked;
+  if (engineCheck.key !== key) startEngineCheck(result, key);
+  showEngineStatus();
 
   // One preview per level, plus the final mate position
   const flipped = isFlipped(result);
@@ -148,6 +170,110 @@ function showLayoutPreview(boardCanvas, positionCanvas) {
   if (old) old.remove();
   layoutPreview.appendChild(renderLayoutPreview(boardCanvas, positionCanvas));
 }
+
+// ---------- Engine check (is the mate really forced?) ----------
+
+// state: 'none', 'running', 'unavailable' (engine could not start) or 'done' (report is filled in)
+let engineCheck = { key: '', state: 'none', report: null, progress: '' };
+let engineQueue = Promise.resolve(); // makes sure only one check talks to the engine at a time
+
+function startEngineCheck(result, key) {
+  const mine = { key: key, state: 'running', report: null, progress: 'starting…' };
+  engineCheck = mine;
+  if (!startEngine()) {
+    mine.state = 'unavailable';
+    return;
+  }
+  engine.postMessage('stop'); // ends the search of an older check, if one is still running
+  engineQueue = engineQueue
+    .then(() => verifyPuzzle(result,
+      text => { mine.progress = text; if (engineCheck === mine) showEngineStatus(); },
+      () => engineCheck !== mine))
+    .then(report => {
+      if (!report || engineCheck !== mine) return;
+      mine.state = 'done';
+      mine.report = report;
+      showEngineStatus();
+    });
+}
+
+function showEngineStatus() {
+  const box = el('engineStatus');
+  box.innerHTML = '';
+  const addLine = (className, text) => {
+    const div = document.createElement('div');
+    div.className = className;
+    div.textContent = text;
+    box.appendChild(div);
+  };
+  if (!current) return;
+
+  if (engineCheck.state === 'running') {
+    addLine('hint', 'Engine check: ' + engineCheck.progress);
+  } else if (engineCheck.state === 'unavailable') {
+    addLine('warning', 'Engine check not possible: the browser blocks the chess engine when the page is opened as a local file. ' +
+      'Use the GitHub Pages address or start-local.bat. This puzzle is NOT verified.');
+  } else if (engineCheck.state === 'done') {
+    if (engineCheck.report.problems.length === 0) {
+      addLine('ok', '✔ Engine check passed: the mate is forced at every level.');
+    } else {
+      addLine('warning', '✘ Engine check failed. Do not post this puzzle:');
+      for (const problem of engineCheck.report.problems) addLine('warning', '  • ' + problem);
+    }
+    for (const note of engineCheck.report.notes) addLine('note', 'Note: ' + note);
+  }
+}
+
+// ---------- Puzzle picker ----------
+
+function pickerFilters() {
+  return {
+    mateIn: [3, 4, 5].filter(n => settings['pickMate' + n]),
+    ratingMin: settings.pickRatingMin,
+    ratingMax: settings.pickRatingMax,
+  };
+}
+
+function updatePickerInfo() {
+  const statuses = Object.values(puzzleLog).map(entry => entry.status);
+  const used = statuses.filter(s => s === 'used').length;
+  const skipped = statuses.filter(s => s === 'skipped').length;
+  el('pickerInfo').textContent = shortlist.length === 0
+    ? 'No shortlist found (data/shortlist.js). Run tools/make-shortlist.js first.'
+    : unusedPuzzles(pickerFilters()).length + ' unused puzzles match · ' + used + ' used · ' + skipped + ' skipped';
+  el('nextPuzzle').disabled = shortlist.length === 0;
+  el('skipPuzzle').disabled = !(current && current.puzzle.id);
+}
+
+// Puts a random unused shortlist puzzle into the paste box, exactly as if it had been pasted.
+function loadNextPuzzle() {
+  const puzzle = randomUnusedPuzzle(pickerFilters());
+  if (!puzzle) {
+    message.textContent = 'No unused puzzle matches these filters.';
+    return;
+  }
+  puzzleText.value = puzzle.line;
+  puzzleText.dispatchEvent(new Event('input'));
+}
+
+el('nextPuzzle').addEventListener('click', loadNextPuzzle);
+el('skipPuzzle').addEventListener('click', () => {
+  markPuzzle(current.puzzle.id, 'skipped', todayString());
+  refresh();
+  if (shortlist.length) loadNextPuzzle();
+});
+el('saveLog').addEventListener('click', event => {
+  event.preventDefault();
+  downloadPuzzleLog();
+});
+el('loadLog').addEventListener('click', event => {
+  event.preventDefault();
+  el('logFile').click();
+});
+el('logFile').addEventListener('change', async () => {
+  if (el('logFile').files[0]) await loadPuzzleLogFile(el('logFile').files[0]);
+  refresh();
+});
 
 // "L1 · 1800 · Mate in 4" – also used as the marker name in Premiere.
 function markerName(level) {
@@ -280,7 +406,17 @@ function buildReadme(puzzle, result, name) {
   lines.push('');
   if (puzzle.rating) lines.push('Lichess rating: ' + puzzle.rating);
   if (puzzle.source) lines.push('Source: ' + puzzle.source);
-  lines.push('Engine check: not done yet (coming in a later version).');
+  if (engineCheck.state !== 'done') {
+    lines.push('Engine check: NOT DONE. The forced mate is unverified.');
+  } else if (engineCheck.report.problems.length) {
+    lines.push('Engine check: PROBLEMS FOUND');
+    for (const problem of engineCheck.report.problems) lines.push('  ' + problem);
+  } else {
+    lines.push('Engine check (Stockfish 10): forced mate confirmed at every level.');
+  }
+  if (engineCheck.state === 'done') {
+    for (const note of engineCheck.report.notes) lines.push('  Note: ' + note);
+  }
   lines.push('Chess pieces: cburnett set by Colin M.L. Burnett.');
   return lines.join('\r\n') + '\r\n';
 }
@@ -299,6 +435,22 @@ async function generate() {
 
   const id = puzzleId.value.trim().replace(/[^\w-]/g, '') || 'puzzle';
   const name = todayString() + '_' + id; // used for the folder and as a prefix for every file
+
+  // Safety questions before anything is written.
+  const doubts = [];
+  if (engineCheck.state !== 'done') doubts.push('The engine has NOT confirmed that this is a forced mate.');
+  else if (engineCheck.report.problems.length) doubts.push('The engine check found problems:\n' + engineCheck.report.problems.join('\n'));
+  if (puzzleLog[id] && puzzleLog[id].status === 'used') doubts.push('You already used this puzzle on ' + puzzleLog[id].date + '.');
+  for await (const [entryName, entry] of baseHandle.entries()) {
+    if (id !== 'puzzle' && entry.kind === 'directory' && entryName.endsWith('_' + id) && entryName !== name) {
+      doubts.push('This folder already contains "' + entryName + '" for the same puzzle.');
+    }
+  }
+  if (doubts.length && !confirm(doubts.join('\n\n') + '\n\nGenerate anyway?')) {
+    message.textContent = 'Cancelled.';
+    return;
+  }
+
   const timeline = buildTimeline(current.result, name);
 
   const folderHandle = await baseHandle.getDirectoryHandle(name, { create: true });
@@ -317,6 +469,9 @@ async function generate() {
   });
   await writeFile(folderHandle, name + '.xml', xml);
   await writeFile(folderHandle, 'readme.txt', buildReadme(current.puzzle, current.result, name));
+
+  if (current.puzzle.id) markPuzzle(current.puzzle.id, 'used', todayString());
+  updatePickerInfo();
 
   message.textContent = 'Done. Created folder "' + name + '" inside "' + baseHandle.name + '" with ' +
     Object.keys(timeline.stills).length + ' PNGs, readme.txt and ' + name + '.xml.\nIn Premiere: File > Import > ' + name + '.xml';
