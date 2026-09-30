@@ -18,16 +18,41 @@ const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
 const readline = require('readline');
+const { Readable } = require('stream');
 
 const projectFolder = path.join(__dirname, '..');
 const zstFile = path.join(projectFolder, 'lichess_db_puzzle.csv.zst');
 const csvFile = path.join(projectFolder, 'lichess_db_puzzle.csv'); // also fine if you already unpacked it
 const outputFile = path.join(projectFolder, 'data', 'shortlist.js');
 
+// The Lichess file is made of many separately packed blocks. In front of each block sits a small
+// "skippable" note that says how many bytes the block has. This reads and unpacks block by block
+// and hands out the unpacked data piece by piece.
+function* unpackedBlocks(file) {
+  const fd = fs.openSync(file, 'r');
+  const header = Buffer.alloc(12);
+  let position = 0;
+  while (fs.readSync(fd, header, 0, 12, position) === 12) {
+    const isNote = (header.readUInt32LE(0) & 0xFFFFFFF0) === 0x184D2A50 && header.readUInt32LE(4) === 4;
+    if (!isNote) {
+      // Not in blocks after all: unpack the whole rest of the file in one go.
+      const rest = Buffer.alloc(fs.fstatSync(fd).size - position);
+      fs.readSync(fd, rest, 0, rest.length, position);
+      yield zlib.zstdDecompressSync(rest);
+      break;
+    }
+    const block = Buffer.alloc(header.readUInt32LE(8));
+    fs.readSync(fd, block, 0, block.length, position + 12);
+    position += 12 + block.length;
+    yield zlib.zstdDecompressSync(block);
+  }
+  fs.closeSync(fd);
+}
+
 async function main() {
   let input;
   if (fs.existsSync(zstFile)) {
-    input = fs.createReadStream(zstFile).pipe(zlib.createZstdDecompress());
+    input = Readable.from(unpackedBlocks(zstFile));
   } else if (fs.existsSync(csvFile)) {
     input = fs.createReadStream(csvFile);
   } else {
@@ -63,6 +88,11 @@ async function main() {
     kept.push([cells[column.PuzzleId], cells[column.FEN], cells[column.Moves], rating,
       cells[column.Themes], cells[column.GameUrl]].join(','));
     perTheme[theme] = (perTheme[theme] || 0) + 1;
+  }
+
+  if (kept.length === 0) {
+    console.error('Read ' + total + ' puzzles but none passed the filters. Nothing written.');
+    process.exit(1);
   }
 
   fs.mkdirSync(path.dirname(outputFile), { recursive: true });
